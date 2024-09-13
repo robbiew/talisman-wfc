@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/hpcloud/tail"
 	"github.com/rivo/tview"
 	"gopkg.in/ini.v1"
@@ -26,11 +28,53 @@ const (
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
 )
 
+// padOrTruncate ensures text is exactly width characters long.
 func padOrTruncate(text string, width int) string {
 	if len(text) > width {
 		return text[:width]
 	}
 	return text + strings.Repeat(" ", width-len(text))
+}
+
+// mapColorName maps a color name string to tcell color.
+func mapColorName(colorName string) tcell.Color {
+	colorName = strings.ToLower(colorName)
+	switch colorName {
+	case "black":
+		return tcell.ColorBlack
+	case "red":
+		return tcell.ColorRed
+	case "green":
+		return tcell.ColorGreen
+	case "yellow":
+		return tcell.ColorYellow
+	case "blue":
+		return tcell.ColorBlue
+	case "magenta":
+		return tcell.ColorPurple
+	case "cyan":
+		return tcell.ColorDarkCyan
+	case "white":
+		return tcell.ColorWhite
+	case "bright black":
+		return tcell.ColorDarkGray
+	case "bright red":
+		return tcell.ColorIndianRed
+	case "bright green":
+		return tcell.ColorLightGreen
+	case "bright yellow":
+		return tcell.ColorLightYellow
+	case "bright blue":
+		return tcell.ColorLightBlue
+	case "bright magenta":
+		return tcell.ColorFuchsia
+	case "bright cyan":
+		return tcell.ColorLightCyan
+	case "bright white":
+		return tcell.ColorLightGray
+	default:
+		return tcell.ColorWhite // Default to white if unknown
+	}
 }
 
 func main() {
@@ -49,22 +93,25 @@ func main() {
 		log.Fatalf("Failed to load ini file: %v", err)
 	}
 
-	// Get the log path from the [paths] section
+	// Get required values from the ini file
 	logPath := cfg.Section("paths").Key("log path").String()
 	if logPath == "" {
 		log.Fatalf("Log path not found in talisman.ini")
 	}
 
-	// Get the max nodes from the [main] section
 	maxNodesStr := cfg.Section("main").Key("max nodes").String()
-	if maxNodesStr == "" {
-		log.Fatalf("Max nodes not found in talisman.ini")
-	}
-
 	maxNodes, err := strconv.Atoi(maxNodesStr)
 	if err != nil {
 		log.Fatalf("Invalid max nodes value in talisman.ini: %v", err)
 	}
+
+	systemName := cfg.Section("main").Key("system name").String()
+	if systemName == "" {
+		log.Fatal("System name not found in talisman.ini")
+	}
+
+	inputBackground := cfg.Section("main").Key("input background").String()
+	inputForeground := cfg.Section("main").Key("input foreground").String()
 
 	// Construct the full log file path
 	logFilePath := filepath.Join(*talismanPath, logPath, "talisman.log")
@@ -81,6 +128,24 @@ func main() {
 	table.SetCell(0, 0, tview.NewTableCell(padOrTruncate("Node", nodeColWidth)).SetSelectable(false))
 	table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
 	table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
+
+	// Message bar at the bottom with system name and quit message
+	messageBar := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(false).
+		SetTextAlign(tview.AlignLeft).
+		SetWrap(false)
+
+	// Update the message bar to dynamically right-align "Hit Q to quit"
+	messageBar.SetDynamicColors(true)
+	messageBar.SetRegions(false)
+	messageBar.SetText(fmt.Sprintf("%s%s",
+		padOrTruncate(systemName, 40),
+		fmt.Sprintf("%30s", "Hit Q to quit")))
+
+	// Adjust the background and foreground colors based on the ini file
+	messageBar.SetBackgroundColor(mapColorName(inputBackground))
+	messageBar.SetTextColor(mapColorName(inputForeground))
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -143,7 +208,21 @@ func main() {
 		}
 	}()
 
-	if err := app.SetRoot(table, true).Run(); err != nil {
+	// Listen for the "Q" key to quit
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyRune && event.Rune() == 'q' || event.Rune() == 'Q' {
+			app.Stop()
+			return nil
+		}
+		return event
+	})
+
+	// Layout: table at the top, message bar at the bottom
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true).
+		AddItem(messageBar, 1, 0, false)
+
+	if err := app.SetRoot(layout, true).Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}
 }
