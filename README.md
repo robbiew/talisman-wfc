@@ -2,7 +2,7 @@
 ![simple POC](assets/screen.png)
 
 ## What it is
-Console application for Talisman BBS that displays current node activity and last caller.
+Console application for Talisman BBS that displays current node activity and last caller. Just needs the path to your Talisman BBS directory, it'll read talisman.ini, find your max nodes and `talisman.log`. It continually reads (tails) the log and updates node status and displays the last caller.
 
 ## Using
 Clone this repo. Switch to the cloned dir and:
