@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -79,6 +80,47 @@ func mapColorName(colorName string) tcell.Color {
 	}
 }
 
+// findLastLoggedOffUser scans the log file for the most recent logged-off user.
+func findLastLoggedOffUser(logFilePath string) string {
+	file, err := os.Open(logFilePath)
+	if err != nil {
+		log.Printf("Error opening log file: %v", err)
+		return "None"
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
+	userPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+
+	lastUser := "None"
+	activeUsers := make(map[string]string)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Capture logins
+		if loginMatches := userPattern.FindStringSubmatch(line); len(loginMatches) > 0 {
+			node := loginMatches[2]
+			user := loginMatches[1]
+			activeUsers[node] = user
+		}
+
+		// Capture logouts and update the last user based on node activity
+		if disconnectMatches := disconnectPattern.FindStringSubmatch(line); len(disconnectMatches) > 0 {
+			node := disconnectMatches[1]
+			if user, exists := activeUsers[node]; exists {
+				lastUser = user
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading log file: %v", err)
+	}
+	return lastUser
+}
+
 func main() {
 	// Parse command-line argument for Talisman installation path
 	talismanPath := flag.String("path", "", "Path to the Talisman BBS installation")
@@ -131,6 +173,16 @@ func main() {
 	table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
 	table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
 
+	// Last User text view
+	lastUserText := tview.NewTextView().
+		SetDynamicColors(true).
+		SetRegions(false).
+		SetWrap(false)
+
+	// Find the last user who logged off
+	lastUser := findLastLoggedOffUser(logFilePath)
+	lastUserText.SetText(fmt.Sprintf("Last User: %s", lastUser))
+
 	// Message bar at the bottom with system name and quit message
 	messageBar := tview.NewTextView().
 		SetDynamicColors(true).
@@ -138,7 +190,7 @@ func main() {
 		SetTextAlign(tview.AlignLeft).
 		SetWrap(false)
 
-	// Set the text with fixed widths for system name (66) and quit message (14)
+	// Set the text with fixed widths for system name (65) and quit message (15)
 	messageBar.SetText(fmt.Sprintf("%s%s",
 		padOrTruncate(" "+systemName, systemNameWidth),
 		padOrTruncate("Hit Q to quit", quitMessageWidth)))
@@ -147,6 +199,9 @@ func main() {
 	messageBar.SetBackgroundColor(mapColorName(inputBackground))
 	messageBar.SetTextColor(mapColorName(inputForeground))
 
+	// Add a spacer to provide more space between lastUserText and the messageBar
+	spacer := tview.NewTextView().SetText("")
+
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
 	if err != nil {
@@ -154,24 +209,37 @@ func main() {
 	}
 
 	nodeStatus := make(map[string]NodeStatus)
-	logPattern := regexp.MustCompile(`\[(\d+)\]  INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|listing fileareas|listing file conferences|posting a message) (.+?) on node (\d+)`)
-	disconnectPattern := regexp.MustCompile(`\[(\d+)\]  INFO: Node (\d+) logged off`)
-	loginPattern := regexp.MustCompile(`\[(\d+)\]  INFO: (.+?) logged in on node (\d+)`)
+	logPattern := regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
+	disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
+	loginPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+
+	// Keep track of the last logged-off user independently
+	var currentLastUser string = lastUser
 
 	go func() {
 		for line := range t.Lines {
 			if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
-				node := disconnectMatches[2]
+				node := disconnectMatches[1]
+				nodeNum, _ := strconv.Atoi(node)
+
+				// Update last user independently and persist it
+				if user, exists := nodeStatus[node]; exists {
+					currentLastUser = user.User                                          // Update the last user
+					lastUserText.SetText(fmt.Sprintf(" Last User: %s", currentLastUser)) // Display last user
+				}
+
+				// Clear node status after logging off
 				delete(nodeStatus, node)
+				table.GetCell(nodeNum, 1).SetText("waiting for caller")
+				table.GetCell(nodeNum, 2).SetText("-")
 			} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
-				node := loginMatches[3]
-				user := loginMatches[2]
+				node := loginMatches[2]
+				user := loginMatches[1]
 				nodeStatus[node] = NodeStatus{User: user, Location: "logging in"}
 			} else if matches := logPattern.FindStringSubmatch(line.Text); len(matches) > 0 {
-				node := matches[5]
-				user := matches[2]
-				_ = matches[3] // Ignore the action part
-				location := matches[4]
+				node := matches[4]
+				user := matches[1]
+				location := matches[3]
 
 				// Simplify the location
 				location = strings.TrimPrefix(location, "menu ")
@@ -217,10 +285,12 @@ func main() {
 		return event
 	})
 
-	// Layout: table at the top, message bar at the bottom
+	// Layout: table at the top, last user in the middle, spacer, and message bar at the bottom
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(table, 0, 1, true).
-		AddItem(messageBar, 1, 0, false)
+		AddItem(lastUserText, 1, 0, false). // Add last user below the node table
+		AddItem(spacer, 1, 0, false).       // Add an empty spacer
+		AddItem(messageBar, 1, 0, false)    // Add message bar at the bottom
 
 	if err := app.SetRoot(layout, true).Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
