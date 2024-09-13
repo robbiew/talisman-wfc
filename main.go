@@ -26,6 +26,8 @@ const (
 	userColWidth     = 25
 	locationColWidth = 25
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
+	systemNameWidth  = 66
+	quitMessageWidth = 14
 )
 
 // padOrTruncate ensures text is exactly width characters long.
@@ -136,12 +138,10 @@ func main() {
 		SetTextAlign(tview.AlignLeft).
 		SetWrap(false)
 
-	// Update the message bar to dynamically right-align "Hit Q to quit"
-	messageBar.SetDynamicColors(true)
-	messageBar.SetRegions(false)
+	// Set the text with fixed widths for system name (66) and quit message (14)
 	messageBar.SetText(fmt.Sprintf("%s%s",
-		padOrTruncate(systemName, 40),
-		fmt.Sprintf("%30s", "Hit Q to quit")))
+		padOrTruncate(" "+systemName, systemNameWidth),
+		padOrTruncate("Hit Q to quit", quitMessageWidth)))
 
 	// Adjust the background and foreground colors based on the ini file
 	messageBar.SetBackgroundColor(mapColorName(inputBackground))
