@@ -11,9 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gdamore/tcell/v2"
 	"github.com/hpcloud/tail"
-	"github.com/rivo/tview"
 	"gopkg.in/ini.v1"
 )
 
@@ -26,12 +24,22 @@ const (
 	nodeColWidth     = 5
 	userColWidth     = 25
 	locationColWidth = 25
-	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
 	systemNameWidth  = 66
 	quitMessageWidth = 14
+	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
 )
 
-// padOrTruncate ensures text is exactly width characters long.
+// ClearScreen clears the terminal screen
+func ClearScreen() {
+	fmt.Print("\033[H\033[2J") // ANSI escape to clear screen and move to top
+}
+
+// MoveCursor moves the cursor to a specific position on the screen
+func MoveCursor(x, y int) {
+	fmt.Printf("\033[%d;%dH", y, x) // ANSI escape to move the cursor
+}
+
+// padOrTruncate ensures text is exactly width characters long
 func padOrTruncate(text string, width int) string {
 	if len(text) > width {
 		return text[:width]
@@ -39,48 +47,29 @@ func padOrTruncate(text string, width int) string {
 	return text + strings.Repeat(" ", width-len(text))
 }
 
-// mapColorName maps a color name string to tcell color.
-func mapColorName(colorName string) tcell.Color {
-	colorName = strings.ToLower(colorName)
-	switch colorName {
-	case "black":
-		return tcell.ColorBlack
-	case "red":
-		return tcell.ColorRed
-	case "green":
-		return tcell.ColorGreen
-	case "yellow":
-		return tcell.ColorYellow
-	case "blue":
-		return tcell.ColorBlue
-	case "magenta":
-		return tcell.ColorPurple
-	case "cyan":
-		return tcell.ColorDarkCyan
-	case "white":
-		return tcell.ColorWhite
-	case "bright black":
-		return tcell.ColorDarkGray
-	case "bright red":
-		return tcell.ColorIndianRed
-	case "bright green":
-		return tcell.ColorLightGreen
-	case "bright yellow":
-		return tcell.ColorLightYellow
-	case "bright blue":
-		return tcell.ColorLightBlue
-	case "bright magenta":
-		return tcell.ColorFuchsia
-	case "bright cyan":
-		return tcell.ColorLightCyan
-	case "bright white":
-		return tcell.ColorLightGray
-	default:
-		return tcell.ColorWhite // Default to white if unknown
+// DrawTable draws the table of nodes and user statuses
+func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int) {
+	ClearScreen()
+	fmt.Println(padOrTruncate("Node", nodeColWidth) + padOrTruncate("User", userColWidth) + padOrTruncate("Location", locationColWidth))
+	fmt.Println(strings.Repeat("-", totalTableWidth))
+
+	for i := 1; i <= maxNodes; i++ {
+		nodeStr := strconv.Itoa(i)
+		status, exists := nodeStatus[nodeStr]
+
+		// If no user is on this node, display "waiting for caller"
+		user := "waiting for caller"
+		location := "-"
+		if exists {
+			user = status.User
+			location = status.Location
+		}
+
+		fmt.Println(padOrTruncate(nodeStr, nodeColWidth) + padOrTruncate(user, userColWidth) + padOrTruncate(location, locationColWidth))
 	}
 }
 
-// findLastLoggedOffUser scans the log file for the most recent logged-off user.
+// findLastLoggedOffUser scans the log file for the most recent logged-off user
 func findLastLoggedOffUser(logFilePath string) string {
 	file, err := os.Open(logFilePath)
 	if err != nil {
@@ -154,9 +143,6 @@ func main() {
 		log.Fatal("System name not found in talisman.ini")
 	}
 
-	inputBackground := cfg.Section("main").Key("input background").String()
-	inputForeground := cfg.Section("main").Key("input foreground").String()
-
 	// Construct the full log file path
 	logFilePath := filepath.Join(*talismanPath, logPath, "talisman.log")
 
@@ -165,42 +151,8 @@ func main() {
 		log.Fatalf("Log file not found at: %s", logFilePath)
 	}
 
-	app := tview.NewApplication()
-	table := tview.NewTable().SetBorders(false)
-
-	// Initialize the table headers with fixed widths
-	table.SetCell(0, 0, tview.NewTableCell(padOrTruncate("Node", nodeColWidth)).SetSelectable(false))
-	table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
-	table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
-
-	// Last User text view
-	lastUserText := tview.NewTextView().
-		SetDynamicColors(true).
-		SetRegions(false).
-		SetWrap(false)
-
-	// Find the last user who logged off
-	lastUser := findLastLoggedOffUser(logFilePath)
-	lastUserText.SetText(fmt.Sprintf("Last User: %s", lastUser))
-
-	// Message bar at the bottom with system name and quit message
-	messageBar := tview.NewTextView().
-		SetDynamicColors(true).
-		SetRegions(false).
-		SetTextAlign(tview.AlignLeft).
-		SetWrap(false)
-
-	// Set the text with fixed widths for system name (65) and quit message (15)
-	messageBar.SetText(fmt.Sprintf("%s%s",
-		padOrTruncate(" "+systemName, systemNameWidth),
-		padOrTruncate("Hit Q to quit", quitMessageWidth)))
-
-	// Adjust the background and foreground colors based on the ini file
-	messageBar.SetBackgroundColor(mapColorName(inputBackground))
-	messageBar.SetTextColor(mapColorName(inputForeground))
-
-	// Add a spacer to provide more space between lastUserText and the messageBar
-	spacer := tview.NewTextView().SetText("")
+	// Initialize variables for node status and log tailing
+	nodeStatus := make(map[string]NodeStatus)
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -208,30 +160,23 @@ func main() {
 		log.Fatalf("Failed to tail file: %v", err)
 	}
 
-	nodeStatus := make(map[string]NodeStatus)
-	logPattern := regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
-	disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
-	loginPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+	// Display the initial screen
+	lastUser := findLastLoggedOffUser(logFilePath)
+	ClearScreen()
+	DrawTable(nodeStatus, maxNodes)
+	fmt.Printf("\nLast User: %s\n", lastUser)
+	fmt.Printf("\nSystem Name: %s | Hit Q to quit\n", systemName)
 
-	// Keep track of the last logged-off user independently
-	var currentLastUser string = lastUser
-
+	// Continuously update the screen as new log entries are read
 	go func() {
+		logPattern := regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
+		disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
+		loginPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+
 		for line := range t.Lines {
 			if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
 				node := disconnectMatches[1]
-				nodeNum, _ := strconv.Atoi(node)
-
-				// Update last user independently and persist it
-				if user, exists := nodeStatus[node]; exists {
-					currentLastUser = user.User                                          // Update the last user
-					lastUserText.SetText(fmt.Sprintf(" Last User: %s", currentLastUser)) // Display last user
-				}
-
-				// Clear node status after logging off
 				delete(nodeStatus, node)
-				table.GetCell(nodeNum, 1).SetText("waiting for caller")
-				table.GetCell(nodeNum, 2).SetText("-")
 			} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
 				node := loginMatches[2]
 				user := loginMatches[1]
@@ -249,50 +194,19 @@ func main() {
 				nodeStatus[node] = NodeStatus{User: user, Location: location}
 			}
 
-			app.QueueUpdateDraw(func() {
-				table.Clear()
-				table.SetCell(0, 0, tview.NewTableCell(padOrTruncate("Node", nodeColWidth)).SetSelectable(false))
-				table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
-				table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
-
-				// Display node information
-				for i := 1; i <= maxNodes; i++ {
-					nodeStr := strconv.Itoa(i)
-					status, exists := nodeStatus[nodeStr]
-
-					// If no user is on this node, display "waiting for caller"
-					user := "waiting for caller"
-					location := "-"
-					if exists {
-						user = status.User
-						location = status.Location
-					}
-
-					table.SetCell(i, 0, tview.NewTableCell(padOrTruncate(nodeStr, nodeColWidth)))
-					table.SetCell(i, 1, tview.NewTableCell(padOrTruncate(user, userColWidth)))
-					table.SetCell(i, 2, tview.NewTableCell(padOrTruncate(location, locationColWidth)))
-				}
-			})
+			// Redraw table and last user
+			DrawTable(nodeStatus, maxNodes)
+			fmt.Printf("\nLast User: %s\n", lastUser)
+			fmt.Printf("\nSystem Name: %s | Hit Q to quit\n", systemName)
 		}
 	}()
 
-	// Listen for the "Q" key to quit
-	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune && event.Rune() == 'q' || event.Rune() == 'Q' {
-			app.Stop()
-			return nil
+	// Handle user input for quitting
+	for {
+		var input string
+		fmt.Scanln(&input)
+		if strings.ToLower(input) == "q" {
+			break
 		}
-		return event
-	})
-
-	// Layout: table at the top, last user in the middle, spacer, and message bar at the bottom
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(table, 0, 1, true).
-		AddItem(lastUserText, 1, 0, false). // Add last user below the node table
-		AddItem(spacer, 1, 0, false).       // Add an empty spacer
-		AddItem(messageBar, 1, 0, false)    // Add message bar at the bottom
-
-	if err := app.SetRoot(layout, true).Run(); err != nil {
-		log.Fatalf("Error running application: %v", err)
 	}
 }
