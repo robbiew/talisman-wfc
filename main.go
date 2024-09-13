@@ -1,12 +1,16 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/hpcloud/tail"
 	"github.com/rivo/tview"
+	"gopkg.in/ini.v1"
 )
 
 type NodeStatus struct {
@@ -15,6 +19,35 @@ type NodeStatus struct {
 }
 
 func main() {
+	// Parse command-line argument for Talisman installation path
+	talismanPath := flag.String("path", "", "Path to the Talisman BBS installation")
+	flag.Parse()
+
+	if *talismanPath == "" {
+		log.Fatal("Please provide the path to the Talisman BBS installation using the --path flag.")
+	}
+
+	// Find and parse talisman.ini file
+	iniFilePath := filepath.Join(*talismanPath, "talisman.ini")
+	cfg, err := ini.Load(iniFilePath)
+	if err != nil {
+		log.Fatalf("Failed to load ini file: %v", err)
+	}
+
+	// Get the log path from the [paths] section
+	logPath := cfg.Section("paths").Key("log path").String()
+	if logPath == "" {
+		log.Fatalf("Log path not found in talisman.ini")
+	}
+
+	// Construct the full log file path
+	logFilePath := filepath.Join(*talismanPath, logPath, "talisman.log")
+
+	// Check if the log file exists
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
+		log.Fatalf("Log file not found at: %s", logFilePath)
+	}
+
 	app := tview.NewApplication()
 	table := tview.NewTable().SetBorders(true)
 
@@ -24,7 +57,7 @@ func main() {
 	table.SetCell(0, 2, tview.NewTableCell("Location").SetSelectable(false))
 
 	// Start tailing the log file
-	t, err := tail.TailFile("/talisman/logs/talisman.log", tail.Config{Follow: true})
+	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
 	if err != nil {
 		log.Fatalf("Failed to tail file: %v", err)
 	}

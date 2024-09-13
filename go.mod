@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/hpcloud/tail v1.0.0
 	github.com/rivo/tview v0.0.0-20240818110301-fd649dbf1223
+	gopkg.in/ini.v1 v1.67.0
 )
 
 require (
@@ -30,6 +31,5 @@ require (
 	golang.org/x/term v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
-	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
