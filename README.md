@@ -1,3 +1,5 @@
+![simple POC](assets/screen.png)
+
 # Talisman Waiting For Caller
 Console application for Talisman BBS that displays current node activity and last caller.
 ## Notes
