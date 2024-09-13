@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/hpcloud/tail"
@@ -16,6 +17,20 @@ import (
 type NodeStatus struct {
 	User     string
 	Location string
+}
+
+const (
+	nodeColWidth     = 5
+	userColWidth     = 25
+	locationColWidth = 25
+	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
+)
+
+func padOrTruncate(text string, width int) string {
+	if len(text) > width {
+		return text[:width]
+	}
+	return text + strings.Repeat(" ", width-len(text))
 }
 
 func main() {
@@ -40,6 +55,17 @@ func main() {
 		log.Fatalf("Log path not found in talisman.ini")
 	}
 
+	// Get the max nodes from the [main] section
+	maxNodesStr := cfg.Section("main").Key("max nodes").String()
+	if maxNodesStr == "" {
+		log.Fatalf("Max nodes not found in talisman.ini")
+	}
+
+	maxNodes, err := strconv.Atoi(maxNodesStr)
+	if err != nil {
+		log.Fatalf("Invalid max nodes value in talisman.ini: %v", err)
+	}
+
 	// Construct the full log file path
 	logFilePath := filepath.Join(*talismanPath, logPath, "talisman.log")
 
@@ -49,12 +75,12 @@ func main() {
 	}
 
 	app := tview.NewApplication()
-	table := tview.NewTable().SetBorders(true)
+	table := tview.NewTable().SetBorders(false)
 
-	// Initialize the table headers
-	table.SetCell(0, 0, tview.NewTableCell("Node").SetSelectable(false))
-	table.SetCell(0, 1, tview.NewTableCell("User").SetSelectable(false))
-	table.SetCell(0, 2, tview.NewTableCell("Location").SetSelectable(false))
+	// Initialize the table headers with fixed widths
+	table.SetCell(0, 0, tview.NewTableCell(padOrTruncate("Node", nodeColWidth)).SetSelectable(false))
+	table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
+	table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -92,16 +118,26 @@ func main() {
 
 			app.QueueUpdateDraw(func() {
 				table.Clear()
-				table.SetCell(0, 0, tview.NewTableCell("Node").SetSelectable(false))
-				table.SetCell(0, 1, tview.NewTableCell("User").SetSelectable(false))
-				table.SetCell(0, 2, tview.NewTableCell("Location").SetSelectable(false))
+				table.SetCell(0, 0, tview.NewTableCell(padOrTruncate("Node", nodeColWidth)).SetSelectable(false))
+				table.SetCell(0, 1, tview.NewTableCell(padOrTruncate("User", userColWidth)).SetSelectable(false))
+				table.SetCell(0, 2, tview.NewTableCell(padOrTruncate("Location", locationColWidth)).SetSelectable(false))
 
-				row := 1
-				for node, status := range nodeStatus {
-					table.SetCell(row, 0, tview.NewTableCell(node))
-					table.SetCell(row, 1, tview.NewTableCell(status.User))
-					table.SetCell(row, 2, tview.NewTableCell(status.Location))
-					row++
+				// Display node information
+				for i := 1; i <= maxNodes; i++ {
+					nodeStr := strconv.Itoa(i)
+					status, exists := nodeStatus[nodeStr]
+
+					// If no user is on this node, display "waiting for caller"
+					user := "waiting for caller"
+					location := "-"
+					if exists {
+						user = status.User
+						location = status.Location
+					}
+
+					table.SetCell(i, 0, tview.NewTableCell(padOrTruncate(nodeStr, nodeColWidth)))
+					table.SetCell(i, 1, tview.NewTableCell(padOrTruncate(user, userColWidth)))
+					table.SetCell(i, 2, tview.NewTableCell(padOrTruncate(location, locationColWidth)))
 				}
 			})
 		}
