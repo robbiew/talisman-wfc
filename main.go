@@ -31,12 +31,12 @@ const (
 	headerHeight     = 4
 
 	// Text colors
-	colorNode               = White
-	colorNodeLabel          = WhiteHi
+	colorNode               = WhiteHi
+	colorNodeLabel          = Cyan
 	colorUser               = CyanHi
 	colorUserLabel          = Cyan
-	colorLocation           = Cyan
-	colorLocationLabel      = CyanHi
+	colorLocation           = CyanHi
+	colorLocationLabel      = Cyan
 	colorLastUserLabel      = Yellow
 	colorLastUser           = YellowHi
 	colorSeparator          = BlackHi
@@ -63,10 +63,10 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
 
 	// Draw table headers with colors
-	fmt.Println(colorNodeLabel + PadOrTruncate("Node", nodeColWidth) + Reset +
+	fmt.Println(Reset + colorNodeLabel + PadOrTruncate("Node", nodeColWidth) + Reset +
 		colorUserLabel + PadOrTruncate("User", userColWidth) + Reset +
 		colorLocationLabel + PadOrTruncate("Location", locationColWidth) + Reset)
-	fmt.Println(strings.Repeat(colorSeparator+"-"+Reset, totalTableWidth))
+	fmt.Println(strings.Repeat(colorSeparator+"-", totalTableWidth) + Reset)
 
 	for i := 1; i <= maxNodes; i++ {
 		nodeStr := strconv.Itoa(i)
@@ -141,8 +141,24 @@ func findLastLoggedOffUser(logFilePath string) string {
 	return lastUser
 }
 
-func main() {
+// Load the Talisman configuration file
+func loadConfig(path string) (*ini.File, error) {
+	iniFilePath := filepath.Join(path, "talisman.ini")
+	cfg, err := ini.Load(iniFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load ini file: %w", err)
+	}
+	return cfg, nil
+}
 
+// Error handling function
+func checkError(err error, msg string) {
+	if err != nil {
+		log.Fatalf("%s: %v", msg, err)
+	}
+}
+
+func main() {
 	// Get terminal dimensions
 	CursorHide()
 	h, w := GetTermSize()
@@ -155,13 +171,8 @@ func main() {
 		log.Fatal("Please provide the path to the Talisman BBS installation using the --path flag.")
 	}
 
-	// Find and parse talisman.ini file
-	iniFilePath := filepath.Join(*talismanPath, "talisman.ini")
-	cfg, err := ini.Load(iniFilePath)
-	if err != nil {
-		log.Fatalf("Failed to load ini file: %v", err)
-	}
-
+	cfg, err := loadConfig(*talismanPath)
+	checkError(err, "loading configuration")
 	// Get required values from the ini file
 	logPath := cfg.Section("paths").Key("log path").String()
 	if logPath == "" {
