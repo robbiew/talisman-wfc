@@ -149,7 +149,9 @@ func findLastLoggedOffUser(logFilePath string) string {
 func loadConfig(path string) (*ini.File, error) {
 	iniFilePath := filepath.Join(path, "talisman.ini")
 	cfg, err := ini.Load(iniFilePath)
-	checkError(err, "failed to load ini file")
+	if err != nil {
+		log.Fatalf("Failed to load configuration file at %s: %v", iniFilePath, err)
+	}
 	return cfg, nil
 }
 
@@ -163,7 +165,11 @@ func checkError(err error, msg string) {
 func main() {
 	// Get terminal dimensions
 	CursorHide()
-	h, w := GetTermSize()
+	h, w, err := GetTermSize()
+	if err != nil {
+		log.Printf("Error getting terminal size, using default: %v", err)
+		h, w = 25, 80 // default size
+	}
 
 	// Parse command-line argument for Talisman installation path
 	talismanPath := flag.String("path", "", "Path to the Talisman BBS installation")
@@ -179,18 +185,18 @@ func main() {
 	// Get required values from the ini file
 	logPath := cfg.Section("paths").Key("log path").String()
 	if logPath == "" {
-		log.Fatalf("Log path not found in talisman.ini")
+		log.Fatalf("Log path not found in talisman.ini. Please check the configuration.")
 	}
 
 	maxNodesStr := cfg.Section("main").Key("max nodes").String()
 	maxNodes, err := strconv.Atoi(maxNodesStr)
 	if err != nil {
-		log.Fatalf("Invalid max nodes value in talisman.ini: %v", err)
+		log.Fatalf("Invalid max nodes value in talisman.ini: %v. Please provide a valid integer.", err)
 	}
 
 	systemName := cfg.Section("main").Key("system name").String()
 	if systemName == "" {
-		log.Fatal("System name not found in talisman.ini")
+		log.Fatal("System name not found in talisman.ini. Please provide a system name.")
 	}
 
 	// Construct the full log file path
@@ -198,9 +204,14 @@ func main() {
 
 	// Check if the log file exists
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
-		log.Fatalf("Log file not found at: %s", logFilePath)
+		log.Printf("Log file not found at: %s. Starting with an empty log.", logFilePath)
+		// Optionally create an empty log file if it doesn't exist
+		file, err := os.Create(logFilePath)
+		if err != nil {
+			log.Fatalf("Failed to create log file at %s: %v", logFilePath, err)
+		}
+		defer file.Close()
 	}
-
 	// Initialize variables for node status and log tailing
 	nodeStatus := make(map[string]NodeStatus)
 

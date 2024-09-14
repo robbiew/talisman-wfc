@@ -85,13 +85,12 @@ const (
 
 // HandleKeyPress handles detecting key press events
 func HandleKeyPress() {
-	// Reading one byte at a time in a loop
 	for {
 		b := make([]byte, 1)
 		_, err := os.Stdin.Read(b)
 		if err != nil {
-			fmt.Println("Error reading input:", err)
-			return
+			log.Printf("Error reading input: %v", err)
+			continue
 		}
 		// Exit if 'q', 'Q', or 'Esc' is pressed
 		if b[0] == 'q' || b[0] == 'Q' || b[0] == 27 { // 27 is the ASCII code for the Escape key
@@ -187,58 +186,47 @@ func RestoreScreen() {
 	fmt.Print(Esc + "?47l")
 }
 
-func GetTermSize() (int, int) {
-	// Set the terminal to raw mode so we aren't waiting for CLRF rom user (to be undone with `-raw`)
+func GetTermSize() (int, int, error) {
 	rawMode := exec.Command("/bin/stty", "raw")
 	rawMode.Stdin = os.Stdin
-	_ = rawMode.Run()
+	if err := rawMode.Run(); err != nil {
+		return 0, 0, fmt.Errorf("failed to set terminal to raw mode: %w", err)
+	}
 
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Fprintf(os.Stdout, "\033[999;999f") // larger than any known term size
-	fmt.Fprintf(os.Stdout, "\033[6n")       // ansi escape code for reporting cursor location
-	text, _ := reader.ReadString('R')
+	fmt.Fprintf(os.Stdout, "\033[999;999f")
+	fmt.Fprintf(os.Stdout, "\033[6n")
+	text, err := reader.ReadString('R')
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to read terminal size: %w", err)
+	}
 
-	// Set the terminal back from raw mode to 'cooked'
 	rawModeOff := exec.Command("/bin/stty", "-raw")
 	rawModeOff.Stdin = os.Stdin
-	_ = rawModeOff.Run()
-	rawModeOff.Wait()
+	if err := rawModeOff.Run(); err != nil {
+		return 0, 0, fmt.Errorf("failed to reset terminal mode: %w", err)
+	}
 
-	// check for the desired output
 	if strings.Contains(string(text), ";") {
 		re := regexp.MustCompile(`\d+;\d+`)
 		line := re.FindString(string(text))
-
 		s := strings.Split(line, ";")
 		sh, sw := s[0], s[1]
 
 		ih, err := strconv.Atoi(sh)
 		if err != nil {
-			// handle error
-			fmt.Println(err)
-			os.Exit(2)
+			return 0, 0, fmt.Errorf("failed to parse terminal height: %w", err)
 		}
 
 		iw, err := strconv.Atoi(sw)
 		if err != nil {
-			// handle error
-			fmt.Println(err)
-			os.Exit(2)
+			return 0, 0, fmt.Errorf("failed to parse terminal width: %w", err)
 		}
-		h := ih
-		w := iw
 
-		ClearScreen()
-
-		return h, w
-
-	} else {
-		// couldn't detect, so let's just set 80 x 25 to be safe
-		h := 80
-		w := 25
-
-		return h, w
+		return ih, iw, nil
 	}
+
+	return 25, 80, nil // Default size
 }
 
 func DisplayAnsiFile(filePath string, localDisplay bool) {
