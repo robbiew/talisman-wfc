@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"golang.org/x/term"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -109,10 +109,13 @@ func PrintSpaces(width int, bgColor string) {
 // PadOrTruncate handles padding or truncating the string while ignoring ANSI color codes
 func PadOrTruncate(text string, width int) string {
 	plainText := StripAnsi(text)
-	if len(plainText) > width {
+	textLen := len(plainText)
+	if textLen == width {
+		return text
+	} else if textLen > width {
 		return text[:width]
 	}
-	return text + strings.Repeat(" ", width-len(plainText))
+	return text + strings.Repeat(" ", width-textLen)
 }
 
 // StripAnsi removes ANSI color codes from a string
@@ -187,46 +190,11 @@ func RestoreScreen() {
 }
 
 func GetTermSize() (int, int, error) {
-	rawMode := exec.Command("/bin/stty", "raw")
-	rawMode.Stdin = os.Stdin
-	if err := rawMode.Run(); err != nil {
-		return 0, 0, fmt.Errorf("failed to set terminal to raw mode: %w", err)
-	}
-
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Fprintf(os.Stdout, "\033[999;999f")
-	fmt.Fprintf(os.Stdout, "\033[6n")
-	text, err := reader.ReadString('R')
+	width, height, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to read terminal size: %w", err)
+		return 0, 0, fmt.Errorf("failed to get terminal size: %w", err)
 	}
-
-	rawModeOff := exec.Command("/bin/stty", "-raw")
-	rawModeOff.Stdin = os.Stdin
-	if err := rawModeOff.Run(); err != nil {
-		return 0, 0, fmt.Errorf("failed to reset terminal mode: %w", err)
-	}
-
-	if strings.Contains(string(text), ";") {
-		re := regexp.MustCompile(`\d+;\d+`)
-		line := re.FindString(string(text))
-		s := strings.Split(line, ";")
-		sh, sw := s[0], s[1]
-
-		ih, err := strconv.Atoi(sh)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to parse terminal height: %w", err)
-		}
-
-		iw, err := strconv.Atoi(sw)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to parse terminal width: %w", err)
-		}
-
-		return ih, iw, nil
-	}
-
-	return 25, 80, nil // Default size
+	return height, width, nil
 }
 
 func DisplayAnsiFile(filePath string, localDisplay bool) {
@@ -234,7 +202,6 @@ func DisplayAnsiFile(filePath string, localDisplay bool) {
 	if err != nil {
 		log.Fatalf("Error reading file %s: %v", filePath, err)
 	}
-	ClearScreen()
 	PrintAnsi(content, 0, localDisplay)
 }
 

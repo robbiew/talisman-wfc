@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hpcloud/tail"
 	"golang.org/x/term"
@@ -52,7 +53,30 @@ var (
 	logPattern        = regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
 	disconnectPattern = regexp.MustCompile(`INFO: Node (\d+) logged off`)
 	loginPattern      = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+	userPattern       = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 )
+
+// Helper function to compare two node status maps
+func isNodeStatusEqual(a, b map[string]NodeStatus) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || v != bv {
+			return false
+		}
+	}
+	return true
+}
+
+// Helper function to copy a node status map
+func copyNodeStatus(src map[string]NodeStatus) map[string]NodeStatus {
+	dst := make(map[string]NodeStatus, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
 
 // DrawTable draws the table of nodes and user statuses
 func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath string, oldState *term.State) {
@@ -115,8 +139,6 @@ func findLastLoggedOffUser(logFilePath string) string {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
-	userPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 
 	lastUser := "None"
 	activeUsers := make(map[string]string)
@@ -163,8 +185,10 @@ func checkError(err error, msg string) {
 }
 
 func main() {
-	// Get terminal dimensions
+	// Hide the cursor
 	CursorHide()
+
+	// Get terminal dimensions
 	h, w, err := GetTermSize()
 	if err != nil {
 		log.Printf("Error getting terminal size, using default: %v", err)
@@ -205,15 +229,14 @@ func main() {
 	// Check if the log file exists
 	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
 		log.Printf("Log file not found at: %s. Starting with an empty log.", logFilePath)
-		// Optionally create an empty log file if it doesn't exist
 		file, err := os.Create(logFilePath)
-		if err != nil {
-			log.Fatalf("Failed to create log file at %s: %v", logFilePath, err)
-		}
-		defer file.Close()
+		checkError(err, fmt.Sprintf("Failed to create log file at %s", logFilePath))
+		file.Close()
 	}
+
 	// Initialize variables for node status and log tailing
-	nodeStatus := make(map[string]NodeStatus)
+	nodeStatus := make(map[string]NodeStatus, maxNodes)
+	previousNodeStatus := make(map[string]NodeStatus, maxNodes) // Initialize previousNodeStatus
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -230,42 +253,64 @@ func main() {
 	lastUser := findLastLoggedOffUser(logFilePath)
 	DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 
+	// Create a ticker to limit the redraw frequency
+	ticker := time.NewTicker(500 * time.Millisecond) // Redraw every 500ms
+	defer ticker.Stop()
+
 	// Continuously update the screen as new log entries are read
 	go func() {
+		for {
+			select {
+			case line := <-t.Lines:
+				updated := false // Track if there are any updates to redraw
 
-		for line := range t.Lines {
-			if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
-				node := disconnectMatches[1]
-				delete(nodeStatus, node)
-			} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
-				node := loginMatches[2]
-				user := loginMatches[1]
-				nodeStatus[node] = NodeStatus{User: user, Location: "logging in"}
-			} else if matches := logPattern.FindStringSubmatch(line.Text); len(matches) > 0 {
-				node := matches[4]
-				user := matches[1]
-				location := matches[3]
+				if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
+					node := disconnectMatches[1]
+					delete(nodeStatus, node)
+					updated = true
+				} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
+					node := loginMatches[2]
+					user := loginMatches[1]
+					nodeStatus[node] = NodeStatus{User: user, Location: "logging in"}
+					updated = true
+				} else if matches := logPattern.FindStringSubmatch(line.Text); len(matches) > 0 {
+					node := matches[4]
+					user := matches[1]
+					location := matches[3]
 
-				// Simplify the location
-				location = strings.TrimPrefix(location, "menu ")
-				location = strings.TrimPrefix(location, "menus/")
-				location = strings.TrimSuffix(location, ".toml")
+					// Simplify the location
+					location = strings.TrimPrefix(location, "menu ")
+					location = strings.TrimPrefix(location, "menus/")
+					location = strings.TrimSuffix(location, ".toml")
 
-				nodeStatus[node] = NodeStatus{User: user, Location: location}
+					nodeStatus[node] = NodeStatus{User: user, Location: location}
+					updated = true
+				}
+
+				if updated {
+					// Only redraw if there are changes
+					select {
+					case <-ticker.C:
+						// Redraw table and last user
+						if !isNodeStatusEqual(nodeStatus, previousNodeStatus) {
+							DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
+							fmt.Printf(colorLastUserLabel+"\nLast User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+							previousNodeStatus = copyNodeStatus(nodeStatus) // Update previous state
+						}
+
+						// Move the cursor to the bottom of the screen
+						MoveCursor(1, h)
+						PrintSpaces(w, colorBackgroundBar)
+
+						MoveCursor(1, h)
+						fmt.Printf(colorBackgroundBar+colorBackgroundBarLabel+" System Name: %s"+Reset, systemName)
+						MoveCursor(w-13, h)
+						fmt.Printf(colorBackgroundBar + colorBackgroundBarLabel + "Q/ESC to Quit" + Reset)
+					default:
+						// If the ticker hasn't triggered yet, skip the redraw
+					}
+				}
 			}
-
-			// Redraw table and last user
-			DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
-			fmt.Printf(colorLastUserLabel+"\nLast User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
-
-			// Move the cursor to the bottom of the screen
-			MoveCursor(1, h)
-			PrintSpaces(w, colorBackgroundBar)
-
-			MoveCursor(1, h)
-			fmt.Printf(colorBackgroundBar+colorBackgroundBarLabel+" System Name: %s"+Reset, systemName)
-			MoveCursor(w-13, h)
-			fmt.Printf(colorBackgroundBar + colorBackgroundBarLabel + "Q/ESC to Quit" + Reset)
 		}
 	}()
 
