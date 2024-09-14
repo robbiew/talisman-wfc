@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/hpcloud/tail"
+	"golang.org/x/term"
 	"gopkg.in/ini.v1"
 )
 
@@ -27,30 +28,28 @@ const (
 	systemNameWidth  = 66
 	quitMessageWidth = 14
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
+	headerHeight     = 4
 )
 
-// ClearScreen clears the terminal screen
-func ClearScreen() {
-	fmt.Print("\033[H\033[2J") // ANSI escape to clear screen and move to top
-}
-
-// MoveCursor moves the cursor to a specific position on the screen
-func MoveCursor(x, y int) {
-	fmt.Printf("\033[%d;%dH", y, x) // ANSI escape to move the cursor
-}
-
-// padOrTruncate ensures text is exactly width characters long
-func padOrTruncate(text string, width int) string {
-	if len(text) > width {
-		return text[:width]
-	}
-	return text + strings.Repeat(" ", width-len(text))
-}
-
 // DrawTable draws the table of nodes and user statuses
-func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int) {
+func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath string, oldState *term.State) {
+
+	// Restore terminal to cooked mode for drawing
+	term.Restore(int(os.Stdin.Fd()), oldState)
+	defer term.MakeRaw(int(os.Stdin.Fd())) // Return to raw mode after drawing
+
+	// Clear the screen
 	ClearScreen()
-	fmt.Println(padOrTruncate("Node", nodeColWidth) + padOrTruncate("User", userColWidth) + padOrTruncate("Location", locationColWidth))
+
+	// Draw header art
+	DisplayAnsiFile(filepath.Join(talismanPath, "gfiles", "wfc.ans"), true)
+	fmt.Print(BgBlack)
+
+	// Move the cursor to the line after the ANSI art (2 rows tall)
+	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
+
+	// Draw table headers
+	fmt.Println(PadOrTruncate("Node", nodeColWidth) + PadOrTruncate("User", userColWidth) + PadOrTruncate("Location", locationColWidth))
 	fmt.Println(strings.Repeat("-", totalTableWidth))
 
 	for i := 1; i <= maxNodes; i++ {
@@ -65,7 +64,7 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int) {
 			location = status.Location
 		}
 
-		fmt.Println(padOrTruncate(nodeStr, nodeColWidth) + padOrTruncate(user, userColWidth) + padOrTruncate(location, locationColWidth))
+		fmt.Println(PadOrTruncate(nodeStr, nodeColWidth) + PadOrTruncate(user, userColWidth) + PadOrTruncate(location, locationColWidth))
 	}
 }
 
@@ -111,6 +110,11 @@ func findLastLoggedOffUser(logFilePath string) string {
 }
 
 func main() {
+
+	// Get terminal dimensions
+	CursorHide()
+	h, w := GetTermSize()
+
 	// Parse command-line argument for Talisman installation path
 	talismanPath := flag.String("path", "", "Path to the Talisman BBS installation")
 	flag.Parse()
@@ -160,12 +164,17 @@ func main() {
 		log.Fatalf("Failed to tail file: %v", err)
 	}
 
+	// Enter raw mode to take full control of the terminal
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		fmt.Println("Error entering raw mode:", err)
+		return
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState) // Ensure the terminal is restored
+
 	// Display the initial screen
 	lastUser := findLastLoggedOffUser(logFilePath)
-	ClearScreen()
-	DrawTable(nodeStatus, maxNodes)
-	fmt.Printf("\nLast User: %s\n", lastUser)
-	fmt.Printf("\nSystem Name: %s | Hit Q to quit\n", systemName)
+	DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 
 	// Continuously update the screen as new log entries are read
 	go func() {
@@ -195,18 +204,20 @@ func main() {
 			}
 
 			// Redraw table and last user
-			DrawTable(nodeStatus, maxNodes)
+			DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 			fmt.Printf("\nLast User: %s\n", lastUser)
-			fmt.Printf("\nSystem Name: %s | Hit Q to quit\n", systemName)
+
+			// Move the cursor to the bottom of the screen
+			MoveCursor(1, h)
+			PrintSpaces(w, BgWhite)
+
+			MoveCursor(1, h)
+			fmt.Printf(BgWhite+Red+" System Name: %s"+Reset, systemName)
+			MoveCursor(w-13, h)
+			fmt.Printf(BgWhite + Red + "Q/ESC to Quit" + Reset)
 		}
 	}()
 
-	// Handle user input for quitting
-	for {
-		var input string
-		fmt.Scanln(&input)
-		if strings.ToLower(input) == "q" {
-			break
-		}
-	}
+	// Handle user input
+	HandleKeyPress()
 }
