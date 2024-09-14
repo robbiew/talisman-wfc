@@ -107,12 +107,22 @@ func PrintSpaces(width int, bgColor string) {
 	fmt.Print(bgColor + spaces + Reset)  // Print the spaces with the background color and reset at the end
 }
 
-// padOrTruncate ensures text is exactly width characters long
+// PadOrTruncate ensures text is exactly width characters long, ignoring ANSI color codes.
 func PadOrTruncate(text string, width int) string {
-	if len(text) > width {
+	// Strip ANSI escape codes for calculating length
+	plainText := StripAnsi(text)
+	length := len(plainText)
+
+	if length > width {
 		return text[:width]
 	}
-	return text + strings.Repeat(" ", width-len(text))
+	return text + strings.Repeat(" ", width-length)
+}
+
+// StripAnsi removes ANSI color codes from a string
+func StripAnsi(text string) string {
+	re := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return re.ReplaceAllString(text, "")
 }
 
 // ClearScreen clears the terminal screen

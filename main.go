@@ -33,7 +33,6 @@ const (
 
 // DrawTable draws the table of nodes and user statuses
 func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath string, oldState *term.State) {
-
 	// Restore terminal to cooked mode for drawing
 	term.Restore(int(os.Stdin.Fd()), oldState)
 	defer term.MakeRaw(int(os.Stdin.Fd())) // Return to raw mode after drawing
@@ -48,23 +47,39 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	// Move the cursor to the line after the ANSI art (2 rows tall)
 	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
 
-	// Draw table headers
-	fmt.Println(PadOrTruncate("Node", nodeColWidth) + PadOrTruncate("User", userColWidth) + PadOrTruncate("Location", locationColWidth))
+	// Draw table headers with colors
+	fmt.Println(BlackHi + PadOrTruncate("Node", nodeColWidth) +
+		BlackHi + PadOrTruncate("User", userColWidth) +
+		BlackHi + PadOrTruncate("Location", locationColWidth) + Reset)
 	fmt.Println(strings.Repeat("-", totalTableWidth))
 
 	for i := 1; i <= maxNodes; i++ {
 		nodeStr := strconv.Itoa(i)
 		status, exists := nodeStatus[nodeStr]
 
-		// If no user is on this node, display "waiting for caller"
+		// Set default values
 		user := "waiting for caller"
 		location := "-"
+
+		// Update values if the user is on this node
 		if exists {
 			user = status.User
 			location = status.Location
+
+			// Add colors
+			user = CyanHi + user + Reset
+			location = Cyan + location + Reset
+		} else {
+			// Color the default values
+			user = Cyan + user + Reset
+			location = Magenta + location + Reset
 		}
 
-		fmt.Println(PadOrTruncate(nodeStr, nodeColWidth) + PadOrTruncate(user, userColWidth) + PadOrTruncate(location, locationColWidth))
+		fmt.Println(
+			PadOrTruncate(nodeStr, nodeColWidth) +
+				PadOrTruncate(user, userColWidth) +
+				PadOrTruncate(location, locationColWidth),
+		)
 	}
 }
 
@@ -205,7 +220,7 @@ func main() {
 
 			// Redraw table and last user
 			DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
-			fmt.Printf("\nLast User: %s\n", lastUser)
+			fmt.Printf(Yellow+"\nLast User:"+YellowHi+" %s\n"+Reset, lastUser)
 
 			// Move the cursor to the bottom of the screen
 			MoveCursor(1, h)
