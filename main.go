@@ -184,6 +184,17 @@ func checkError(err error, msg string) {
 	}
 }
 
+// Draws the footer with system name and quit instruction
+func drawFooter(h, w int, systemName string) {
+	MoveCursor(1, h)
+	PrintSpaces(w, colorBackgroundBar)
+
+	MoveCursor(1, h)
+	fmt.Printf(colorBackgroundBar+colorBackgroundBarLabel+" System Name: %s"+Reset, systemName)
+	MoveCursor(w-13, h)
+	fmt.Printf(colorBackgroundBar + colorBackgroundBarLabel + "Q/ESC to Quit" + Reset)
+}
+
 func main() {
 	// Hide the cursor
 	CursorHide()
@@ -253,6 +264,13 @@ func main() {
 	lastUser := findLastLoggedOffUser(logFilePath)
 	DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 
+	// Draw the initial footer
+	drawFooter(h, w, systemName)
+
+	// Print the last user
+	MoveCursor(1, h-2)
+	fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+
 	// Create a ticker to limit the redraw frequency
 	ticker := time.NewTicker(500 * time.Millisecond) // Redraw every 500ms
 	defer ticker.Stop()
@@ -294,7 +312,8 @@ func main() {
 						// Redraw table and last user
 						if !isNodeStatusEqual(nodeStatus, previousNodeStatus) {
 							DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
-							fmt.Printf(colorLastUserLabel+"\nLast User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+							MoveCursor(1, h-2)
+							fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
 							previousNodeStatus = copyNodeStatus(nodeStatus) // Update previous state
 						}
 
