@@ -29,6 +29,21 @@ const (
 	quitMessageWidth = 14
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
 	headerHeight     = 4
+
+	// Text colors
+	colorNode               = White
+	colorNodeLabel          = WhiteHi
+	colorUser               = CyanHi
+	colorUserLabel          = Cyan
+	colorLocation           = Cyan
+	colorLocationLabel      = CyanHi
+	colorLastUserLabel      = Yellow
+	colorLastUser           = YellowHi
+	colorSeparator          = BlackHi
+	colorSystemName         = Red
+	colorQuitMessage        = Red
+	colorBackgroundBar      = BgWhiteHi
+	colorBackgroundBarLabel = Red
 )
 
 // DrawTable draws the table of nodes and user statuses
@@ -48,10 +63,10 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
 
 	// Draw table headers with colors
-	fmt.Println(BlackHi + PadOrTruncate("Node", nodeColWidth) +
-		BlackHi + PadOrTruncate("User", userColWidth) +
-		BlackHi + PadOrTruncate("Location", locationColWidth) + Reset)
-	fmt.Println(strings.Repeat("-", totalTableWidth))
+	fmt.Println(colorNodeLabel + PadOrTruncate("Node", nodeColWidth) +
+		colorUserLabel + PadOrTruncate("User", userColWidth) + Reset +
+		colorLocationLabel + PadOrTruncate("Location", locationColWidth) + Reset)
+	fmt.Println(strings.Repeat(colorSeparator+"-"+Reset, totalTableWidth))
 
 	for i := 1; i <= maxNodes; i++ {
 		nodeStr := strconv.Itoa(i)
@@ -67,12 +82,12 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 			location = status.Location
 
 			// Add colors
-			user = CyanHi + user + Reset
-			location = Cyan + location + Reset
+			user = colorUser + user + Reset
+			location = colorLocation + location + Reset
 		} else {
 			// Color the default values
-			user = Cyan + user + Reset
-			location = Magenta + location + Reset
+			user = colorUser + user + Reset
+			location = colorLocation + location + Reset
 		}
 
 		fmt.Println(
@@ -220,16 +235,16 @@ func main() {
 
 			// Redraw table and last user
 			DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
-			fmt.Printf(Yellow+"\nLast User:"+YellowHi+" %s\n"+Reset, lastUser)
+			fmt.Printf(colorLastUserLabel+"\nLast User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
 
 			// Move the cursor to the bottom of the screen
 			MoveCursor(1, h)
-			PrintSpaces(w, BgWhite)
+			PrintSpaces(w, colorBackgroundBar)
 
 			MoveCursor(1, h)
-			fmt.Printf(BgWhite+Red+" System Name: %s"+Reset, systemName)
+			fmt.Printf(colorBackgroundBar+colorBackgroundBarLabel+" System Name: %s"+Reset, systemName)
 			MoveCursor(w-13, h)
-			fmt.Printf(BgWhite + Red + "Q/ESC to Quit" + Reset)
+			fmt.Printf(colorBackgroundBar + colorBackgroundBarLabel + "Q/ESC to Quit" + Reset)
 		}
 	}()
 
