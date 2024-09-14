@@ -63,7 +63,7 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
 
 	// Draw table headers with colors
-	fmt.Println(colorNodeLabel + PadOrTruncate("Node", nodeColWidth) +
+	fmt.Println(colorNodeLabel + PadOrTruncate("Node", nodeColWidth) + Reset +
 		colorUserLabel + PadOrTruncate("User", userColWidth) + Reset +
 		colorLocationLabel + PadOrTruncate("Location", locationColWidth) + Reset)
 	fmt.Println(strings.Repeat(colorSeparator+"-"+Reset, totalTableWidth))
@@ -80,20 +80,22 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 		if exists {
 			user = status.User
 			location = status.Location
-
-			// Add colors
-			user = colorUser + user + Reset
-			location = colorLocation + location + Reset
-		} else {
-			// Color the default values
-			user = colorUser + user + Reset
-			location = colorLocation + location + Reset
 		}
 
+		// Apply padding before adding colors
+		paddedNodeStr := PadOrTruncate(nodeStr, nodeColWidth)
+		paddedUser := PadOrTruncate(user, userColWidth)
+		paddedLocation := PadOrTruncate(location, locationColWidth)
+
+		// Add colors after padding
+		nodeColored := colorNode + paddedNodeStr + Reset
+		userColored := colorUser + paddedUser + Reset
+		locationColored := colorLocation + paddedLocation + Reset
+
 		fmt.Println(
-			PadOrTruncate(nodeStr, nodeColWidth) +
-				PadOrTruncate(user, userColWidth) +
-				PadOrTruncate(location, locationColWidth),
+			nodeColored +
+				userColored +
+				locationColored,
 		)
 	}
 }
