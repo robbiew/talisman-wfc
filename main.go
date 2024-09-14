@@ -22,6 +22,7 @@ type NodeStatus struct {
 }
 
 const (
+	// Column widths
 	nodeColWidth     = 5
 	userColWidth     = 25
 	locationColWidth = 25
@@ -44,6 +45,13 @@ const (
 	colorQuitMessage        = Red
 	colorBackgroundBar      = BgWhiteHi
 	colorBackgroundBarLabel = Red
+)
+
+// Regular expressions for parsing log entries
+var (
+	logPattern        = regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
+	disconnectPattern = regexp.MustCompile(`INFO: Node (\d+) logged off`)
+	loginPattern      = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 )
 
 // DrawTable draws the table of nodes and user statuses
@@ -103,10 +111,7 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 // findLastLoggedOffUser scans the log file for the most recent logged-off user
 func findLastLoggedOffUser(logFilePath string) string {
 	file, err := os.Open(logFilePath)
-	if err != nil {
-		log.Printf("Error opening log file: %v", err)
-		return "None"
-	}
+	checkError(err, "Error opening log file")
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
@@ -141,13 +146,10 @@ func findLastLoggedOffUser(logFilePath string) string {
 	return lastUser
 }
 
-// Load the Talisman configuration file
 func loadConfig(path string) (*ini.File, error) {
 	iniFilePath := filepath.Join(path, "talisman.ini")
 	cfg, err := ini.Load(iniFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load ini file: %w", err)
-	}
+	checkError(err, "failed to load ini file")
 	return cfg, nil
 }
 
@@ -173,6 +175,7 @@ func main() {
 
 	cfg, err := loadConfig(*talismanPath)
 	checkError(err, "loading configuration")
+
 	// Get required values from the ini file
 	logPath := cfg.Section("paths").Key("log path").String()
 	if logPath == "" {
@@ -203,17 +206,14 @@ func main() {
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
-	if err != nil {
-		log.Fatalf("Failed to tail file: %v", err)
-	}
+	checkError(err, "Failed to tail file")
 
 	// Enter raw mode to take full control of the terminal
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		fmt.Println("Error entering raw mode:", err)
-		return
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState) // Ensure the terminal is restored
+	checkError(err, "Error entering raw mode")
+	defer func() {
+		checkError(term.Restore(int(os.Stdin.Fd()), oldState), "restoring terminal state")
+	}()
 
 	// Display the initial screen
 	lastUser := findLastLoggedOffUser(logFilePath)
@@ -221,9 +221,6 @@ func main() {
 
 	// Continuously update the screen as new log entries are read
 	go func() {
-		logPattern := regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
-		disconnectPattern := regexp.MustCompile(`INFO: Node (\d+) logged off`)
-		loginPattern := regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 
 		for line := range t.Lines {
 			if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
