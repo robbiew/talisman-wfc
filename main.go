@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -50,14 +51,55 @@ const (
 	colorBackgroundBarLabel = Red
 )
 
-// Regular expressions for parsing log entries
 var (
+	// Regular expressions for parsing log entries
 	logPattern        = regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
 	disconnectPattern = regexp.MustCompile(`INFO: Node (\d+) logged off`)
 	loginPattern      = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 	connectionPattern = regexp.MustCompile(`INFO: Connection From: (.+?) on Node (\d+)`)
 	menuPattern       = regexp.MustCompile(`INFO: (.+?) loading menu (.+?) on node (\d+)`)
+
+	// Change "sysop" to the actual username you want to exclude
+	excludeUser = "j0hnny a1pha"
 )
+
+// Function to count today's calls excluding the specified user
+func countTodaysCalls(logFilePath string) int {
+	// Get the current date in YYYY-MM-DD format
+	today := time.Now().Format("2006-01-02")
+	count := 0
+
+	// Open the log file
+	file, err := os.Open(logFilePath)
+	if err != nil {
+		log.Printf("Error opening log file: %v", err)
+		return count
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Check if the log line is from today
+		if strings.HasPrefix(line, today) {
+			// Check for a login match
+			if loginMatches := loginPattern.FindStringSubmatch(line); len(loginMatches) > 0 {
+				user := loginMatches[1]
+				// Increment the count if the user is not the one to exclude
+				if user != excludeUser {
+					count++
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Error reading log file: %v", err)
+	}
+
+	return count
+}
 
 func formatCell(text string, width int, color string) string {
 	return Reset + color + PadOrTruncate(text, width) + Reset
@@ -251,12 +293,17 @@ func main() {
 	lastUser := findLastLoggedOffUser(logFilePath, maxLogLines) // Read last 100 lines to get recent entries
 	DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 
+	// Count today's calls
+	todaysCalls := countTodaysCalls(logFilePath)
+
 	// Draw the initial footer
 	drawFooter(h, w, systemName)
 
-	// Print the last user
-	MoveCursor(1, h-2)
+	// Print the last user and today's calls
+	MoveCursor(1, h-3)
 	fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+	MoveCursor(1, h-2)
+	fmt.Printf(colorLastUserLabel+" Today's Calls: "+Reset+colorLastUser+"%d (excluding %s)\n"+Reset, todaysCalls, excludeUser)
 
 	// Create a ticker to limit the redraw frequency
 	ticker := time.NewTicker(500 * time.Millisecond) // Redraw every 500ms
@@ -317,9 +364,11 @@ func main() {
 						DrawTableRow(nodeNum, status, maxNodes, *talismanPath)
 					}
 
-					// Update the last user display
-					MoveCursor(1, h-2)
+					// Update the last user display and today's calls
+					MoveCursor(1, h-3)
 					fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+					MoveCursor(1, h-2)
+					fmt.Printf(colorLastUserLabel+" Today's Calls: "+Reset+colorLastUser+"%d (excluding %s)\n"+Reset, todaysCalls, excludeUser)
 
 					// Move the cursor to the bottom of the screen
 					drawFooter(h, w, systemName)
