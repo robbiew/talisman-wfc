@@ -23,8 +23,8 @@ type NodeStatus struct {
 
 const (
 	// Column widths
-	nodeColWidth     = 5
-	userColWidth     = 25
+	nodeColWidth     = 8
+	userColWidth     = 30
 	locationColWidth = 25
 	systemNameWidth  = 66
 	quitMessageWidth = 14
@@ -69,7 +69,7 @@ func DrawTableRow(nodeNum int, status NodeStatus, maxNodes int, talismanPath str
 	row := headerHeight + 1 + nodeNum
 
 	// Move cursor to the specific row and column
-	MoveCursor(2, row)
+	MoveCursor(1, row)
 
 	// Format and print the node data
 	nodeStr := strconv.Itoa(nodeNum)
