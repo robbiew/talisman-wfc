@@ -23,9 +23,9 @@ type NodeStatus struct {
 
 const (
 	// Column widths
-	nodeColWidth     = 8
-	userColWidth     = 30
-	locationColWidth = 25
+	nodeColWidth     = 5
+	userColWidth     = 20
+	locationColWidth = 20
 	systemNameWidth  = 66
 	quitMessageWidth = 14
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
@@ -66,7 +66,7 @@ func formatCell(text string, width int, color string) string {
 // DrawTableRow draws a single row in the table.
 func DrawTableRow(nodeNum int, status NodeStatus, maxNodes int, talismanPath string) {
 	// Calculate the row position based on nodeNum
-	row := headerHeight + 1 + nodeNum
+	row := headerHeight + 2 + nodeNum
 
 	// Move cursor to the specific row and column
 	MoveCursor(1, row)
@@ -111,7 +111,7 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 		status, exists := nodeStatus[strconv.Itoa(i)]
 
 		if !exists {
-			status = NodeStatus{User: "waiting for caller", Location: "-"}
+			status = NodeStatus{User: Reset + BlackHi + "waiting for caller" + Reset, Location: BlackHi + "-" + Reset}
 		}
 
 		DrawTableRow(i, status, maxNodes, talismanPath)
