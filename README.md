@@ -15,3 +15,13 @@ Clone this repo. Switch to the cloned dir and:
 - Tested on Ubuntu 24.04
 - set console size to 80x25 for best results
 - ANSI is converted to UTF-8
+
+## TO-DO
+- [ ] Only read 2 days of log entries upon starting (log files can get huge)
+- [ ] Today's Calls count
+- [ ] Today's Message Posted count
+- [ ] Today's File Up/Down count
+- [ ] Today's Doors opened count
+- [ ] Event Log (Upcoming events from events.toml)
+- [ ] Other logs: Postie, Binki
+- [ ] Local Logon (launch ub UTF-8 m9ode)
