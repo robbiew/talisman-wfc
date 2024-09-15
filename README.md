@@ -15,13 +15,14 @@ Clone this repo. Switch to the cloned dir and:
 - Tested on Ubuntu 24.04
 - set console size to 80x25 for best results
 - ANSI is converted to UTF-8
-- Entire log file is loaded, but only the last `maxLogLines` are processed - recommend daily log rolling/ Ensure the `maxLogLines` parameter is appropriately set so it covers enough of the log to capture recent user activity.
+- Entire log file is loaded, but only the last `maxLogLines` are processed - recommend daily log rolling. Ensure the `maxLogLines` parameter is appropriately set so it covers enough of the log to capture recent user activity.
 
 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
 - [ ] Today's Calls count
 - [ ] Today's Message Posted count
+- [ ] Allow variables to be set externally (e.g. a wfc.ini)
 - [ ] Today's File Up/Down count
 - [ ] Today's Doors opened count
 - [ ] Event Log (Upcoming events from events.toml)
