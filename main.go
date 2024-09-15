@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -31,6 +30,9 @@ const (
 	quitMessageWidth = 14
 	totalTableWidth  = nodeColWidth + userColWidth + locationColWidth
 	headerHeight     = 4
+
+	// Maximum number of lines to read from the log file (whole file is loaded on startup)
+	maxLogLines = 200
 
 	// Text colors
 	colorNode               = WhiteHi
@@ -132,38 +134,40 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	}
 }
 
-// findLastLoggedOffUser scans the log file for the most recent logged-off user
-func findLastLoggedOffUser(logFilePath string) string {
-	file, err := os.Open(logFilePath)
-	checkError(err, "Error opening log file")
-	defer file.Close()
+func findLastLoggedOffUser(logFilePath string, numLines int) string {
+	// Use tail to read the entire file
+	t, err := tail.TailFile(logFilePath, tail.Config{
+		Follow:   false,
+		Location: &tail.SeekInfo{Offset: 0, Whence: os.SEEK_SET},
+	})
+	if err != nil {
+		log.Printf("Error tailing log file: %v", err)
+		return "None"
+	}
+	defer t.Cleanup()
 
-	scanner := bufio.NewScanner(file)
+	var lines []string
+	for line := range t.Lines {
+		lines = append(lines, line.Text)
+	}
 
+	// Process only the last `numLines` lines
 	lastUser := "None"
 	activeUsers := make(map[string]string)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
+	for _, line := range lines[max(0, len(lines)-numLines):] {
 		// Capture logins
 		if loginMatches := userPattern.FindStringSubmatch(line); len(loginMatches) > 0 {
 			node := loginMatches[2]
 			user := loginMatches[1]
 			activeUsers[node] = user
 		}
-
-		// Capture logouts and update the last user based on node activity
+		// Capture logouts
 		if disconnectMatches := disconnectPattern.FindStringSubmatch(line); len(disconnectMatches) > 0 {
 			node := disconnectMatches[1]
 			if user, exists := activeUsers[node]; exists {
 				lastUser = user
 			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Printf("Error reading log file: %v", err)
 	}
 	return lastUser
 }
@@ -261,7 +265,7 @@ func main() {
 	}()
 
 	// Display the initial screen
-	lastUser := findLastLoggedOffUser(logFilePath)
+	lastUser := findLastLoggedOffUser(logFilePath, maxLogLines) // Read last 100 lines to get recent entries
 	DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
 
 	// Draw the initial footer
