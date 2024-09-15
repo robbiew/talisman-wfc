@@ -55,31 +55,33 @@ var (
 	logPattern        = regexp.MustCompile(`INFO: (.+?) (logged in|loading menu|running door|running script|listing messages|posting a message) (.+?) on node (\d+)`)
 	disconnectPattern = regexp.MustCompile(`INFO: Node (\d+) logged off`)
 	loginPattern      = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
-	userPattern       = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
+	connectionPattern = regexp.MustCompile(`INFO: Connection From: (.+?) on Node (\d+)`)
+	menuPattern       = regexp.MustCompile(`INFO: (.+?) loading menu (.+?) on node (\d+)`)
 )
 
-// Helper function to compare two node status maps
-func isNodeStatusEqual(a, b map[string]NodeStatus) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		if bv, ok := b[k]; !ok || v != bv {
-			return false
-		}
-	}
-	return true
+func formatCell(text string, width int, color string) string {
+	return Reset + color + PadOrTruncate(text, width) + Reset
 }
 
-// Helper function to copy a node status map
-func copyNodeStatus(src map[string]NodeStatus) map[string]NodeStatus {
-	dst := make(map[string]NodeStatus, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
+// DrawTableRow draws a single row in the table.
+func DrawTableRow(nodeNum int, status NodeStatus, maxNodes int, talismanPath string) {
+	// Calculate the row position based on nodeNum
+	row := headerHeight + 1 + nodeNum
+
+	// Move cursor to the specific row and column
+	MoveCursor(2, row)
+
+	// Format and print the node data
+	nodeStr := strconv.Itoa(nodeNum)
+	fmt.Println(
+		" " +
+			formatCell(nodeStr, nodeColWidth, colorNode) +
+			formatCell(status.User, userColWidth, colorUser) +
+			formatCell(status.Location, locationColWidth, colorLocation),
+	)
 }
 
+// DrawTable draws the full table of nodes and user statuses.
 func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath string, oldState *term.State) {
 	// Restore terminal to cooked mode for drawing
 	term.Restore(int(os.Stdin.Fd()), oldState)
@@ -93,43 +95,26 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	fmt.Print(BgBlack)
 
 	// Move the cursor to the line after the ANSI art (2 rows tall), offset by 1 column
-	MoveCursor(2, headerHeight+1) // Move cursor to column 2 instead of 1
+	MoveCursor(1, headerHeight+1) // Move cursor to column 2 instead of 1
 
 	// Draw table headers with colors
-	fmt.Println(Reset + colorNodeLabel + PadOrTruncate("Node", nodeColWidth) + Reset +
-		colorUserLabel + PadOrTruncate("User", userColWidth) + Reset +
-		colorLocationLabel + PadOrTruncate("Location", locationColWidth) + Reset)
+	fmt.Println(
+		" " +
+			formatCell("Node", nodeColWidth, colorNodeLabel) +
+			formatCell("User", userColWidth, colorUserLabel) +
+			formatCell("Location", locationColWidth, colorLocationLabel),
+	)
 	fmt.Println(" " + strings.Repeat(colorSeparator+"-", totalTableWidth) + Reset)
 
+	// Draw all rows initially
 	for i := 1; i <= maxNodes; i++ {
-		nodeStr := strconv.Itoa(i)
-		status, exists := nodeStatus[nodeStr]
+		status, exists := nodeStatus[strconv.Itoa(i)]
 
-		// Set default values
-		user := "waiting for caller"
-		location := "-"
-
-		// Update values if the user is on this node
-		if exists {
-			user = status.User
-			location = status.Location
+		if !exists {
+			status = NodeStatus{User: "waiting for caller", Location: "-"}
 		}
 
-		// Apply padding before adding colors
-		paddedNodeStr := PadOrTruncate(nodeStr, nodeColWidth)
-		paddedUser := PadOrTruncate(user, userColWidth)
-		paddedLocation := PadOrTruncate(location, locationColWidth)
-
-		// Add colors after padding and prepend a space for offset
-		nodeColored := " " + colorNode + paddedNodeStr + Reset
-		userColored := colorUser + paddedUser + Reset
-		locationColored := colorLocation + paddedLocation + Reset
-
-		fmt.Println(
-			nodeColored +
-				userColored +
-				locationColored,
-		)
+		DrawTableRow(i, status, maxNodes, talismanPath)
 	}
 }
 
@@ -155,7 +140,7 @@ func findLastLoggedOffUser(logFilePath string, numLines int) string {
 	activeUsers := make(map[string]string)
 	for _, line := range lines[max(0, len(lines)-numLines):] {
 		// Capture logins
-		if loginMatches := userPattern.FindStringSubmatch(line); len(loginMatches) > 0 {
+		if loginMatches := loginPattern.FindStringSubmatch(line); len(loginMatches) > 0 {
 			node := loginMatches[2]
 			user := loginMatches[1]
 			activeUsers[node] = user
@@ -250,7 +235,6 @@ func main() {
 
 	// Initialize variables for node status and log tailing
 	nodeStatus := make(map[string]NodeStatus, maxNodes)
-	previousNodeStatus := make(map[string]NodeStatus, maxNodes) // Initialize previousNodeStatus
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -283,54 +267,64 @@ func main() {
 		for {
 			select {
 			case line := <-t.Lines:
-				updated := false // Track if there are any updates to redraw
+				updatedNodes := make(map[int]NodeStatus) // Track updated nodes
 
-				if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
-					node := disconnectMatches[1]
-					delete(nodeStatus, node)
-					updated = true
+				if connectionMatches := connectionPattern.FindStringSubmatch(line.Text); len(connectionMatches) > 0 {
+					ip := connectionMatches[1]
+					node := connectionMatches[2]
+					nodeStatus[node] = NodeStatus{User: "Connecting from " + ip, Location: ""}
+					nodeNum, _ := strconv.Atoi(node)
+					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
 					node := loginMatches[2]
 					user := loginMatches[1]
-					nodeStatus[node] = NodeStatus{User: user, Location: "logging in"}
-					updated = true
+					// Set the user and display "logging in..." in the Location column
+					nodeStatus[node] = NodeStatus{User: user, Location: "logging in..."}
+					nodeNum, _ := strconv.Atoi(node)
+					updatedNodes[nodeNum] = nodeStatus[node]
+				} else if menuMatches := menuPattern.FindStringSubmatch(line.Text); len(menuMatches) > 0 {
+					user := menuMatches[1]
+					menuName := strings.Title(strings.TrimSuffix(filepath.Base(menuMatches[2]), ".toml")) // Capitalize the menu name
+					node := menuMatches[3]
+					nodeStatus[node] = NodeStatus{User: user, Location: "At " + menuName + " Menu"}
+					nodeNum, _ := strconv.Atoi(node)
+					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if matches := logPattern.FindStringSubmatch(line.Text); len(matches) > 0 {
 					node := matches[4]
 					user := matches[1]
 					location := matches[3]
 
-					// Simplify the location
+					// Simplify the location and handle specific cases
 					location = strings.TrimPrefix(location, "menu ")
 					location = strings.TrimPrefix(location, "menus/")
 					location = strings.TrimSuffix(location, ".toml")
+					location = "At " + strings.Title(location)
 
 					nodeStatus[node] = NodeStatus{User: user, Location: location}
-					updated = true
+					nodeNum, _ := strconv.Atoi(node)
+					updatedNodes[nodeNum] = nodeStatus[node]
+				} else if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
+					node := disconnectMatches[1]
+					delete(nodeStatus, node)
+					nodeNum, _ := strconv.Atoi(node)
+					updatedNodes[nodeNum] = NodeStatus{User: "waiting for caller", Location: "-"}
 				}
 
-				if updated {
-					// Only redraw if there are changes
-					select {
-					case <-ticker.C:
-						// Redraw table and last user
-						if !isNodeStatusEqual(nodeStatus, previousNodeStatus) {
-							DrawTable(nodeStatus, maxNodes, *talismanPath, oldState)
-							MoveCursor(1, h-2)
-							fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
-							previousNodeStatus = copyNodeStatus(nodeStatus) // Update previous state
-						}
-
-						// Move the cursor to the bottom of the screen
-						MoveCursor(1, h)
-						PrintSpaces(w, colorBackgroundBar)
-
-						MoveCursor(1, h)
-						fmt.Printf(colorBackgroundBar+colorBackgroundBarLabel+" System Name: %s"+Reset, systemName)
-						MoveCursor(w-13, h)
-						fmt.Printf(colorBackgroundBar + colorBackgroundBarLabel + "Q/ESC to Quit" + Reset)
-					default:
-						// If the ticker hasn't triggered yet, skip the redraw
+				// Only redraw if there are changes
+				select {
+				case <-ticker.C:
+					for nodeNum, status := range updatedNodes {
+						DrawTableRow(nodeNum, status, maxNodes, *talismanPath)
 					}
+
+					// Update the last user display
+					MoveCursor(1, h-2)
+					fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
+
+					// Move the cursor to the bottom of the screen
+					drawFooter(h, w, systemName)
+				default:
+					// If the ticker hasn't triggered yet, skip the redraw
 				}
 			}
 		}
