@@ -17,6 +17,11 @@ Clone this repo. Switch to the cloned dir and:
 - ANSI is converted to UTF-8
 - Entire log file is loaded, but only the last `maxLogLines` are processed - recommend daily log rolling. Ensure the `maxLogLines` parameter is appropriately set so it covers enough of the log to capture recent user activity.
 
+## Talisman Gitlab tickets
+I've got a couple issues filed with the maintainer that could imprrove this WFC app:
+- [Write user connection details to talisman.log](https://gitlab.com/lawrencestockman/talisman/-/issues/5)
+- ["PREVMENU" command is not writing to talisman.log](https://gitlab.com/lawrencestockman/talisman/-/issues/4)
+
 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
@@ -25,6 +30,6 @@ Clone this repo. Switch to the cloned dir and:
 - [ ] Allow variables to be set externally (e.g. a wfc.ini)
 - [ ] Today's File Up/Down count
 - [ ] Today's Doors opened count
-- [ ] Event Log (Upcoming events from events.toml)
+- [ ] Event Log (Show upcoming events from events.toml)
 - [ ] Other logs: Postie, Binki
-- [ ] Local Logon (launch ub UTF-8 mode)
+- [ ] Local Logon (launch w/UTF-8 mode)
