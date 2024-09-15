@@ -80,7 +80,6 @@ func copyNodeStatus(src map[string]NodeStatus) map[string]NodeStatus {
 	return dst
 }
 
-// DrawTable draws the table of nodes and user statuses
 func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath string, oldState *term.State) {
 	// Restore terminal to cooked mode for drawing
 	term.Restore(int(os.Stdin.Fd()), oldState)
@@ -93,14 +92,14 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 	DisplayAnsiFile(filepath.Join(talismanPath, "gfiles", "wfc.ans"), true)
 	fmt.Print(BgBlack)
 
-	// Move the cursor to the line after the ANSI art (2 rows tall)
-	MoveCursor(1, headerHeight+1) // Move cursor to the beginning of the line after the art
+	// Move the cursor to the line after the ANSI art (2 rows tall), offset by 1 column
+	MoveCursor(2, headerHeight+1) // Move cursor to column 2 instead of 1
 
 	// Draw table headers with colors
 	fmt.Println(Reset + colorNodeLabel + PadOrTruncate("Node", nodeColWidth) + Reset +
 		colorUserLabel + PadOrTruncate("User", userColWidth) + Reset +
 		colorLocationLabel + PadOrTruncate("Location", locationColWidth) + Reset)
-	fmt.Println(strings.Repeat(colorSeparator+"-", totalTableWidth) + Reset)
+	fmt.Println(" " + strings.Repeat(colorSeparator+"-", totalTableWidth) + Reset)
 
 	for i := 1; i <= maxNodes; i++ {
 		nodeStr := strconv.Itoa(i)
@@ -121,8 +120,8 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 		paddedUser := PadOrTruncate(user, userColWidth)
 		paddedLocation := PadOrTruncate(location, locationColWidth)
 
-		// Add colors after padding
-		nodeColored := colorNode + paddedNodeStr + Reset
+		// Add colors after padding and prepend a space for offset
+		nodeColored := " " + colorNode + paddedNodeStr + Reset
 		userColored := colorUser + paddedUser + Reset
 		locationColored := colorLocation + paddedLocation + Reset
 
