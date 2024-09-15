@@ -15,9 +15,8 @@ Clone this repo. Switch to the cloned dir and:
 - Tested on Ubuntu 24.04
 - set console size to 80x25 for best results
 - ANSI is converted to UTF-8
-- Entire log file is loaded, but only `maxLogLines` is processed - recommend daily log rolling
-- Recommend using a daily log roller so it is not processing the entire talisman log history
-- In order to get other stats not in the log, may need a companion Luascript to write these, or direct SQLite calls
+- Entire log file is loaded, but only the last `maxLogLines` are processed - recommend daily log rolling/ Ensure the `maxLogLines` parameter is appropriately set so it covers enough of the log to capture recent user activity.
+
 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
