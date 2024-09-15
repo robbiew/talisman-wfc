@@ -24,8 +24,8 @@ I've got a couple issues filed with the maintainer that could imprrove this WFC 
 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
-- [ ] Today's Calls count
-- [ ] Today's Message Posted count
+- [X] Today's Calls count, exlude Sysop
+- [ ] Today's Messages Posted count
 - [ ] Allow variables to be set externally (e.g. a wfc.ini)
 - [ ] Today's File Up/Down count
 - [ ] Today's Doors opened count
