@@ -39,6 +39,7 @@ const (
 	colorNode               = WhiteHi
 	colorNodeLabel          = Cyan
 	colorUser               = CyanHi
+	colorUserLabelUnet      = Green
 	colorUserLabel          = Cyan
 	colorLocation           = CyanHi
 	colorLocationLabel      = Cyan
@@ -114,12 +115,18 @@ func DrawTableRow(nodeNum int, status NodeStatus, maxNodes int, talismanPath str
 	// Move cursor to the specific row and column
 	MoveCursor(1, row)
 
+	// Determine color based on user status
+	userColor := colorUser
+	if status.User == "waiting for caller" {
+		userColor = colorUserLabelUnet // Default color for "waiting for caller"
+	}
+
 	// Format and print the node data
 	nodeStr := strconv.Itoa(nodeNum)
 	fmt.Println(
 		" " +
 			formatCell(nodeStr, nodeColWidth, colorNode) +
-			formatCell(status.User, userColWidth, colorUser) +
+			formatCell(status.User, userColWidth, userColor) +
 			formatCell(status.Location, locationColWidth, colorLocation),
 	)
 }
@@ -154,7 +161,7 @@ func DrawTable(nodeStatus map[string]NodeStatus, maxNodes int, talismanPath stri
 		status, exists := nodeStatus[strconv.Itoa(i)]
 
 		if !exists {
-			status = NodeStatus{User: Reset + BlackHi + "waiting for caller" + Reset, Location: BlackHi + "-" + Reset}
+			status = NodeStatus{User: "waiting for caller", Location: "-"}
 		}
 
 		DrawTableRow(i, status, maxNodes, talismanPath)
@@ -346,10 +353,7 @@ func main() {
 					updatedNodes[nodeNum] = nodeStatus[node]
 
 					// Track the new user as a placeholder until they log in
-					activeUsers[node] = "New User"
-
-					// Recount today's calls
-					todaysCalls = countTodaysCalls(logFilePath)
+					// Do not add "New User" to activeUsers since it's not the actual username
 				} else if menuMatches := menuPattern.FindStringSubmatch(line.Text); len(menuMatches) > 0 {
 					user := menuMatches[1]
 					menuName := strings.Title(strings.TrimSuffix(filepath.Base(menuMatches[2]), ".toml")) // Capitalize the menu name
@@ -373,7 +377,8 @@ func main() {
 					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
 					node := disconnectMatches[1]
-					if user, exists := activeUsers[node]; exists {
+					// Ensure we only update lastUser if there was an actual user logged in
+					if user, exists := activeUsers[node]; exists && user != "New User" {
 						lastUser = user // Update the last user to the one who logged off
 					}
 					delete(activeUsers, node) // Remove the user from the active users
@@ -395,8 +400,10 @@ func main() {
 
 					// Update the last user display and today's calls
 					MoveCursor(1, h-3)
+					fmt.Print("\033[K") // Clear the line
 					fmt.Printf(colorLastUserLabel+" Last User:"+Reset+colorLastUser+" %s\n"+Reset, lastUser)
 					MoveCursor(1, h-2)
+					fmt.Print("\033[K") // Clear the line
 					fmt.Printf(colorLastUserLabel+" Today's Calls: "+Reset+colorLastUser+"%d (excluding %s)\n"+Reset, todaysCalls, excludeUser)
 
 					// Move the cursor to the bottom of the screen
