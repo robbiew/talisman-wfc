@@ -276,8 +276,9 @@ func main() {
 		file.Close()
 	}
 
-	// Initialize variables for node status and log tailing
+	// Initialize variables for node status, active users and log tailing
 	nodeStatus := make(map[string]NodeStatus, maxNodes)
+	activeUsers := make(map[string]string) // node number to username mapping
 
 	// Start tailing the log file
 	t, err := tail.TailFile(logFilePath, tail.Config{Follow: true})
@@ -332,6 +333,9 @@ func main() {
 					nodeNum, _ := strconv.Atoi(node)
 					updatedNodes[nodeNum] = nodeStatus[node]
 
+					// Track the logged-in user
+					activeUsers[node] = user
+
 					// Recount today's calls
 					todaysCalls = countTodaysCalls(logFilePath)
 				} else if newUserMatches := newUserPattern.FindStringSubmatch(line.Text); len(newUserMatches) > 0 {
@@ -340,6 +344,9 @@ func main() {
 					// Update NodeStatus with "New User" and "Signing up..." information
 					nodeStatus[node] = NodeStatus{User: "New User", Location: "Signing up..."}
 					updatedNodes[nodeNum] = nodeStatus[node]
+
+					// Track the new user as a placeholder until they log in
+					activeUsers[node] = "New User"
 
 					// Recount today's calls
 					todaysCalls = countTodaysCalls(logFilePath)
@@ -366,9 +373,10 @@ func main() {
 					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
 					node := disconnectMatches[1]
-					if user, exists := nodeStatus[node]; exists {
-						lastUser = user.User // Update the last user to the one who logged off
+					if user, exists := activeUsers[node]; exists {
+						lastUser = user // Update the last user to the one who logged off
 					}
+					delete(activeUsers, node) // Remove the user from the active users
 					delete(nodeStatus, node)
 					nodeNum, _ := strconv.Atoi(node)
 					updatedNodes[nodeNum] = NodeStatus{User: "waiting for caller", Location: "-"}
