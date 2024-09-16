@@ -58,6 +58,7 @@ var (
 	loginPattern      = regexp.MustCompile(`INFO: (.+?) logged in on node (\d+)`)
 	connectionPattern = regexp.MustCompile(`INFO: Connection From: (.+?) on Node (\d+)`)
 	menuPattern       = regexp.MustCompile(`INFO: (.+?) loading menu (.+?) on node (\d+)`)
+	newUserPattern    = regexp.MustCompile(`INFO: New user signing up on node (\d+)`)
 
 	// Change "sysop" to the actual username you want to exclude
 	excludeUser = "j0hnny a1pha"
@@ -319,7 +320,8 @@ func main() {
 				if connectionMatches := connectionPattern.FindStringSubmatch(line.Text); len(connectionMatches) > 0 {
 					ip := connectionMatches[1]
 					node := connectionMatches[2]
-					nodeStatus[node] = NodeStatus{User: "Connecting from " + ip, Location: ""}
+					// Update NodeStatus with "Unknown User" in User column and IP in Location column
+					nodeStatus[node] = NodeStatus{User: "Unknown User", Location: ip}
 					nodeNum, _ := strconv.Atoi(node)
 					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if loginMatches := loginPattern.FindStringSubmatch(line.Text); len(loginMatches) > 0 {
@@ -329,6 +331,18 @@ func main() {
 					nodeStatus[node] = NodeStatus{User: user, Location: "logging in..."}
 					nodeNum, _ := strconv.Atoi(node)
 					updatedNodes[nodeNum] = nodeStatus[node]
+
+					// Recount today's calls
+					todaysCalls = countTodaysCalls(logFilePath)
+				} else if newUserMatches := newUserPattern.FindStringSubmatch(line.Text); len(newUserMatches) > 0 {
+					node := newUserMatches[1]
+					nodeNum, _ := strconv.Atoi(node)
+					// Update NodeStatus with "New User" and "Signing up..." information
+					nodeStatus[node] = NodeStatus{User: "New User", Location: "Signing up..."}
+					updatedNodes[nodeNum] = nodeStatus[node]
+
+					// Recount today's calls
+					todaysCalls = countTodaysCalls(logFilePath)
 				} else if menuMatches := menuPattern.FindStringSubmatch(line.Text); len(menuMatches) > 0 {
 					user := menuMatches[1]
 					menuName := strings.Title(strings.TrimSuffix(filepath.Base(menuMatches[2]), ".toml")) // Capitalize the menu name
@@ -352,14 +366,21 @@ func main() {
 					updatedNodes[nodeNum] = nodeStatus[node]
 				} else if disconnectMatches := disconnectPattern.FindStringSubmatch(line.Text); len(disconnectMatches) > 0 {
 					node := disconnectMatches[1]
+					if user, exists := nodeStatus[node]; exists {
+						lastUser = user.User // Update the last user to the one who logged off
+					}
 					delete(nodeStatus, node)
 					nodeNum, _ := strconv.Atoi(node)
 					updatedNodes[nodeNum] = NodeStatus{User: "waiting for caller", Location: "-"}
+
+					// Recount today's calls
+					todaysCalls = countTodaysCalls(logFilePath)
 				}
 
 				// Only redraw if there are changes
 				select {
 				case <-ticker.C:
+					// Redraw only on ticker or when there's a change
 					for nodeNum, status := range updatedNodes {
 						DrawTableRow(nodeNum, status, maxNodes, *talismanPath)
 					}
@@ -373,7 +394,7 @@ func main() {
 					// Move the cursor to the bottom of the screen
 					drawFooter(h, w, systemName)
 				default:
-					// If the ticker hasn't triggered yet, skip the redraw
+					// Skip redraw if not needed
 				}
 			}
 		}
