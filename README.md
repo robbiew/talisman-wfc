@@ -25,10 +25,7 @@ I've got a couple issues filed with the maintainer that could imprrove this WFC 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
 - [X] Today's Calls count, exlude Sysop
+- [ ] Allow variables to be set externally (e.g. a config.ini)
 - [ ] Today's Messages Posted count
-- [ ] Allow variables to be set externally (e.g. a wfc.ini)
 - [ ] Today's File Up/Down count
 - [ ] Today's Doors opened count
-- [ ] Event Log (Show upcoming events from events.toml)
-- [ ] Other logs: Postie, Binki
-- [ ] Local Logon (launch w/UTF-8 mode)
