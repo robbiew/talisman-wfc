@@ -25,6 +25,7 @@ I've got a couple issues filed with the maintainer that could imprrove this WFC 
 ## TO-DO
 - [X] Only read max last X log entries upon starting (log files can get huge). Or use daily log roller
 - [X] Today's Calls count, exlude Sysop
+- [ ] Rediect output from Servo to WFC
 - [ ] Allow variables to be set externally (e.g. a config.ini)
 - [ ] Today's Messages Posted count
 - [ ] Today's File Up/Down count
